@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // First Rule Block defined: Default catch-all deny rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Helper logic
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+
+    // 1. Validation Blueprint for Product Profiles (Anti-Update-Gap)
+    function isValidProductProfile(data) {
+      return data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 64 && data.sku.matches('^[a-zA-Z0-9_\\-\\.]+$') &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 256 &&
+             (!data.keys().hasAll(['brand']) || (data.brand is string && data.brand.size() >= 2 && data.brand.size() <= 128)) &&
+             data.safetyStock is int && data.safetyStock >= 0 && data.safetyStock <= 10000 &&
+             data.sstRequired is bool &&
+             (!data.keys().hasAll(['unitsPerBox']) || (data.unitsPerBox is int && data.unitsPerBox >= 1 && data.unitsPerBox <= 1000));
+    }
+
+    // 2. Validation Blueprint for active Inventory Batches
+    function isValidInventoryBatch(data) {
+      return data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 64 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 256 &&
+             data.lot is string && data.lot.size() >= 1 && data.lot.size() <= 64 &&
+             data.expiryDate is string && data.expiryDate.size() == 10 && data.expiryDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+             data.quantity is int && data.quantity >= 0 && data.quantity <= 1000000 &&
+             data.createdAt is string && data.createdAt.size() <= 128 &&
+             (!data.keys().hasAll(['sstRequired']) || data.sstRequired is bool) &&
+             (!data.keys().hasAll(['sstPassed']) || data.sstPassed is bool) &&
+             (!data.keys().hasAll(['sstCompletedDate']) || (data.sstCompletedDate is string && data.sstCompletedDate.size() <= 64));
+    }
+
+    // 3. Validation Blueprint for Audit/Movement Logs
+    function isValidMovementLog(data) {
+      return data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.timestamp is string && data.timestamp.size() <= 128 &&
+             data.type is string && (data.type == 'STOCK_IN' || data.type == 'STOCK_OUT' || data.type == 'STOCK_OUT_OVERRIDE' || data.type == 'WASTE') &&
+             data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 64 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 256 &&
+             data.lot is string && data.lot.size() >= 1 && data.lot.size() <= 64 &&
+             data.expiryDate is string && data.expiryDate.size() == 10 && data.expiryDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+             data.quantity is int && data.quantity > 0 && data.quantity <= 1000000 &&
+             (!data.keys().hasAll(['notes']) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    // Product Profiles Path Match Rules (Unique SKUs)
+    match /productProfiles/{sku} {
+      allow read: if isSignedIn();
+      allow create: if isEmailVerified() && isValidId(sku) && sku == incoming().sku &&
+                    incoming().keys().hasAll(['sku', 'name', 'safetyStock', 'sstRequired']) &&
+                    incoming().keys().size() <= 6 &&
+                    isValidProductProfile(incoming());
+      allow update: if isEmailVerified() && isValidId(sku) &&
+                    isValidProductProfile(incoming()) &&
+                    incoming().sku == sku &&
+                    incoming().sku == existing().sku; // Immutability verification
+      allow delete: if isEmailVerified() && isValidId(sku);
+    }
+
+    // Inventory Lots/Batches Path Match Rules
+    match /batches/{batchId} {
+      allow read: if isSignedIn();
+      
+      // Global Consistency Invariant verified with exists() check on parent SKU Product Profile registration
+      allow create: if isEmailVerified() && isValidId(batchId) && batchId == incoming().id &&
+                    incoming().keys().hasAll(['id', 'sku', 'name', 'lot', 'expiryDate', 'quantity', 'createdAt']) &&
+                    incoming().keys().size() <= 10 &&
+                    exists(/databases/$(database)/documents/productProfiles/$(incoming().sku)) &&
+                    isValidInventoryBatch(incoming());
+                    
+      allow update: if isEmailVerified() && isValidId(batchId) &&
+                    isValidInventoryBatch(incoming()) &&
+                    incoming().id == batchId &&
+                    incoming().id == existing().id &&
+                    incoming().sku == existing().sku && // Immutable fields
+                    incoming().lot == existing().lot &&
+                    incoming().expiryDate == existing().expiryDate &&
+                    incoming().createdAt == existing().createdAt;
+                    
+      allow delete: if isEmailVerified() && isValidId(batchId);
+    }
+
+    // Movement History Log Matching (Historical logs are fully Append-Only)
+    match /logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isEmailVerified() && isValidId(logId) && logId == incoming().id &&
+                    incoming().keys().hasAll(['id', 'timestamp', 'type', 'sku', 'name', 'lot', 'expiryDate', 'quantity']) &&
+                    incoming().keys().size() <= 9 &&
+                    isValidMovementLog(incoming());
+      allow update, delete: if false; // Append-Only: update and delete are strictly forbidden
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "SMART FEFO Inventory",
+  "description": "Camera-enabled barcode & QR code inventory tracker enforcing First Expired First Out (FEFO) rules.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

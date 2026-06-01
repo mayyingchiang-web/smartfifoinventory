@@ -1,0 +1,147 @@
+{
+  "entities": {
+    "ProductProfile": {
+      "title": "ProductProfile",
+      "description": "Represents standard attributes of a specific clinical inventory item (SKU).",
+      "type": "object",
+      "properties": {
+        "sku": {
+          "type": "string",
+          "description": "Unique identifiers for product SKU"
+        },
+        "name": {
+          "type": "string",
+          "description": "Clinical item name"
+        },
+        "brand": {
+          "type": "string",
+          "description": "Item brand / manufacturer"
+        },
+        "safetyStock": {
+          "type": "integer",
+          "description": "Minimum threshold count"
+        },
+        "sstRequired": {
+          "type": "boolean",
+          "description": "Whether SST is required for safety"
+        },
+        "unitsPerBox": {
+          "type": "integer",
+          "description": "Standard pack size item/box"
+        }
+      },
+      "required": ["sku", "name", "safetyStock", "sstRequired"]
+    },
+    "InventoryBatch": {
+      "title": "InventoryBatch",
+      "description": "Represents an active physical batch of an item lot in warehouse stock.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of batch document"
+        },
+        "sku": {
+          "type": "string",
+          "description": "The SKU code"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the item"
+        },
+        "lot": {
+          "type": "string",
+          "description": "The production lot number"
+        },
+        "expiryDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Expiry date YYYY-MM-DD"
+        },
+        "quantity": {
+          "type": "integer",
+          "description": "Number of active units available"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Batch receipt timestamp"
+        },
+        "sstRequired": {
+          "type": "boolean",
+          "description": "SST required flag"
+        },
+        "sstPassed": {
+          "type": "boolean",
+          "description": "SST pass status"
+        },
+        "sstCompletedDate": {
+          "type": "string",
+          "description": "SST completed date"
+        }
+      },
+      "required": ["id", "sku", "name", "lot", "expiryDate", "quantity", "createdAt"]
+    },
+    "MovementLog": {
+      "title": "MovementLog",
+      "description": "Audit logs documenting stock movement events.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique log identifier"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Log timestamp"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["STOCK_IN", "STOCK_OUT", "STOCK_OUT_OVERRIDE", "WASTE"],
+          "description": "Type of event"
+        },
+        "sku": {
+          "type": "string",
+          "description": "SKU"
+        },
+        "name": {
+          "type": "string",
+          "description": "Product name"
+        },
+        "lot": {
+          "type": "string",
+          "description": "Production Lot"
+        },
+        "expiryDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Lot expiry date"
+        },
+        "quantity": {
+          "type": "integer",
+          "description": "Physical quantity moved"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional event details"
+        }
+      },
+      "required": ["id", "timestamp", "type", "sku", "name", "lot", "expiryDate", "quantity"]
+    }
+  },
+  "firestore": {
+    "/productProfiles/{sku}": {
+      "schema": "ProductProfile",
+      "description": "Standard attributes and configurations of unique SKUs"
+    },
+    "/batches/{batchId}": {
+      "schema": "InventoryBatch",
+      "description": "Active item lots stored in inventory"
+    },
+    "/logs/{logId}": {
+      "schema": "MovementLog",
+      "description": "Historic stock movements and compliance audits"
+    }
+  }
+}
